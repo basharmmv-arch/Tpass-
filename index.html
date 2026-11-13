@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TPass</title>
+<meta name="theme-color" content="#0A1A3A">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="https://cdn-icons-png.flaticon.com/512/2554/2554978.png">
+<meta name="mobile-web-app-capable" content="yes">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif}
+body{background:#0A1A3A;color:white;padding:15px;padding-bottom:90px}
+.header{text-align:center;padding:15px 0}
+.header h1{font-size:32px;color:#FFD700}
+.header p{color:#ccc;font-size:14px}
+.search{width:100%;padding:14px;border-radius:12px;border:none;font-size:16px;margin:12px 0}
+.card{background:white;color:#111;border-radius:14px;padding:15px;margin-bottom:12px}
+.card h2{font-size:18px;text-transform:uppercase;color:#0A1A3A}
+.card p{font-size:14px;color:#333;margin-top:5px;line-height:1.5}
+.badge{display:inline-block;padding:5px 10px;border-radius:15px;color:white;font-weight:bold;font-size:12px;margin-top:8px;background:#22c55e}
+.bottom-bar{position:fixed;bottom:0;left:0;right:0;background:#061026;padding:12px;display:flex;gap:10px;border-top:1px solid #1e3a8a}
+.btn{flex:1;padding:14px;border:none;border-radius:10px;font-weight:bold;font-size:15px;cursor:pointer}
+.btn-scan{background:#FFD700;color:#0A1A3A}
+.btn-key{background:#1e3a8a;color:white;flex:0.4}
+</style>
+</head>
+<body>
+<div class="header"><h1>TPass</h1><p>Afriquia Gaz Tanger</p></div>
+<input class="search" id="search" placeholder="9elleb b smiya, CIN, matricule..." onkeyup="filter()">
+<div id="list"></div>
+
+<div class="bottom-bar">
+  <button class="btn btn-scan" onclick="document.getElementById('cam').click()">📷 SCANNER DOC (IA)</button>
+  <button class="btn btn-key" onclick="setKey()">🔑 API</button>
+</div>
+<input type="file" id="cam" accept="image/*" capture="environment" style="display:none" onchange="scanImg(event)">
+
+<script>
+var data = JSON.parse(localStorage.getItem('tpass_data')) || [
+  {name:"MOUSTAPHA AKACHAR",cin:"L460370",tracteur:"95251-A-50",citerne:"2707-09",client:"SALAM GAZ TETOUAN",cmd:"25585 / 26.01.023373.01",qty:"20 000 Kg BUTANE",tour:"STE DE TRANSPORT DE GAZ",status:"ALLOW PASS"}
+];
+
+function save() { localStorage.setItem('tpass_data', JSON.stringify(data)); }
+
+function render(list){
+  var html="";
+  for(var i=0;i<list.length;i++){
+    var d=list[i];
+    html+='<div class="card"><h2>'+d.name+'</h2><p><b>CIN:</b> '+d.cin+'<br><b>Tracteur:</b> '+d.tracteur+' | <b>Citerne:</b> '+d.citerne+'<br><b>Client:</b> '+d.client+'<br><b>Qté:</b> '+d.qty+' | <b>Cmd:</b> '+d.cmd+'<br><b>Transport:</b> '+d.tour+'</p><span class="badge">'+d.status+'</span></div>';
+  }
+  document.getElementById('list').innerHTML=html;
+}
+
+function filter(){
+  var q=document.getElementById('search').value.toLowerCase();
+  var f=data.filter(d => (d.name+d.cin+d.tracteur+d.citerne+d.client+d.cmd+d.tour).toLowerCase().includes(q));
+  render(f);
+}
+
+function setKey(){
+  var k = prompt("Lsse9 API Key dyal Google AI Studio hna:", localStorage.getItem('gemini_key') || "");
+  if(k !== null) { localStorage.setItem('gemini_key', k.trim()); alert("API Key t-sauvegardat!"); }
+}
+
+async function scanImg(e){
+  var key = localStorage.getItem('gemini_key');
+  if(!key){ alert("Clicki 3la bouton 🔑 API l-teht w 7et l-mftah dyalk howa l-wel!"); return; }
+  var file = e.target.files[0];
+  if(!file) return;
+  
+  var btn = document.querySelector('.btn-scan');
+  btn.innerText = "⏳ Kay-9ra tswira...";
+  
+  var reader = new FileReader();
+  reader.onload = async function(){
+    var base64 = reader.result.split(',')[1];
+    try {
+      var res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + key, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              {text: "Extract transport/delivery info from this image into pure JSON ONLY (no markdown) with keys: name, cin, tracteur, citerne, client, cmd, qty, tour, status. Use '-' if missing."},
+              {inline_data: {mime_type: file.type, data: base64}}
+            ]
+          }]
+        })
+      });
+      var json = await res.json();
+      var txt = json.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim();
+      var item = JSON.parse(txt);
+      item.status = item.status || "ALLOW PASS";
+      data.unshift(item);
+      save();
+      render(data);
+      alert("T-zad b najah: " + item.name);
+    } catch(err) {
+      alert("Erreur f l-9raya dyal tswira. T2ekked mn API Key ola connexion.");
+    }
+    btn.innerText = "📷 SCANNER DOC (IA)";
+  };
+  reader.readAsDataURL(file);
+}
+
+render(data);
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js'); }
+</script>
+</body>
+</html>
